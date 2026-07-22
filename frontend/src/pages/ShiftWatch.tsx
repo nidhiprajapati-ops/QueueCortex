@@ -4,18 +4,20 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useToast } from '@/components/ui/toast'
 import { TicketHistoryPanel } from '@/components/tickets/TicketHistoryPanel'
-import { useRosterAgents, useRosterOverdueTickets, useRosterTicketDetail, useUploadRoster } from '@/hooks/useRoster'
+import { useRosterAgents, useRosterOverdueTickets, useRosterTicketDetail, useUpdateRosterShift, useUploadRoster } from '@/hooks/useRoster'
 import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import { absoluteTime, relativeTime } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import type { RosterOverdueTicket, ShiftReason } from '@/types'
 
 const COLUMNS = ['#', 'Holding', 'Type', 'Shift', 'Held', 'Last activity', '']
+const ROSTER_SHIFT_CODES = ['6A-3P', '11A-8P', '9P-6A', 'Off']
 
 function formatShiftLabel(shiftCode: string | null, reason: ShiftReason): string {
   if (!shiftCode) return '—'
@@ -90,6 +92,42 @@ function ShiftWatchRow({ ticket, expanded, onToggle }: { ticket: RosterOverdueTi
         </TableRow>
       )}
     </>
+  )
+}
+
+function EditableShiftCell({ email, which, value }: { email: string; which: 'today' | 'tomorrow'; value: string | null }) {
+  const updateShift = useUpdateRosterShift()
+  const toast = useToast()
+  // The uploaded sheet can carry leave codes we don't hardcode (e.g. "EL") -
+  // keep whatever's already set as a selectable option so editing the other
+  // column never silently drops it.
+  const options = value && !ROSTER_SHIFT_CODES.includes(value) ? [value, ...ROSTER_SHIFT_CODES] : ROSTER_SHIFT_CODES
+
+  return (
+    <Select
+      value={value ?? undefined}
+      onValueChange={(v) => {
+        updateShift.mutate(
+          { email, which, shiftCode: v },
+          {
+            onError: (err) => {
+              toast({ title: 'Could not update shift', description: err instanceof Error ? err.message : undefined, variant: 'error' })
+            },
+          },
+        )
+      }}
+    >
+      <SelectTrigger className="h-7 w-27 gap-1 border-none bg-transparent px-1.5 font-tabular text-xs hover:bg-accent focus-visible:ring-1">
+        <SelectValue placeholder="—" />
+      </SelectTrigger>
+      <SelectContent>
+        {options.map((c) => (
+          <SelectItem key={c} value={c}>
+            {c}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   )
 }
 
@@ -240,8 +278,12 @@ export function ShiftWatch() {
                       <TableRow key={a.email}>
                         <TableCell>{a.name}</TableCell>
                         <TableCell className="text-muted-foreground">{a.role}</TableCell>
-                        <TableCell className="font-tabular">{a.today_shift_code ?? '—'}</TableCell>
-                        <TableCell className="font-tabular">{a.tomorrow_shift_code ?? '—'}</TableCell>
+                        <TableCell className="p-1">
+                          <EditableShiftCell email={a.email} which="today" value={a.today_shift_code} />
+                        </TableCell>
+                        <TableCell className="p-1">
+                          <EditableShiftCell email={a.email} which="tomorrow" value={a.tomorrow_shift_code} />
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>

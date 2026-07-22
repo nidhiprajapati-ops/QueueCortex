@@ -29,7 +29,7 @@ export function FilterBar({ search, onSearchChange, derivedType, onDerivedTypeCh
           ref={searchInputRef}
           value={search}
           onChange={(e) => onSearchChange(e.target.value)}
-          placeholder="Search subject or ticket # (/)"
+          placeholder="Search customer or ticket # (/)"
           className="rounded-full pl-9"
         />
       </div>

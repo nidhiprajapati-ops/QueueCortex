@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -267,6 +267,17 @@ class RosterAgentOut(BaseModel):
     role: str
     today_shift_code: str | None
     tomorrow_shift_code: str | None
+
+
+class RosterShiftUpdateRequest(BaseModel):
+    """Manual correction for a single roster cell - e.g. someone's shift
+    changed since the last sheet upload and Yashwanth knows the new one.
+    Targets today/tomorrow (the only two columns Shift Watch's roster table
+    shows) rather than a raw date, so the frontend never has to reason about
+    the reporting timezone itself."""
+
+    which: Literal["today", "tomorrow"]
+    shift_code: str
 
 
 class RosterOverdueTicket(BaseModel):

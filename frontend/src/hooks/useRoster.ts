@@ -59,3 +59,18 @@ export function useUploadRoster() {
     },
   })
 }
+
+export function useUpdateRosterShift() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ email, which, shiftCode }: { email: string; which: 'today' | 'tomorrow'; shiftCode: string }) =>
+      request<RosterAgentOut>(`/roster/agents/${encodeURIComponent(email)}/shift`, {
+        method: 'PUT',
+        body: JSON.stringify({ which, shift_code: shiftCode }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['roster-agents'] })
+      qc.invalidateQueries({ queryKey: ['roster-overdue-tickets'] })
+    },
+  })
+}

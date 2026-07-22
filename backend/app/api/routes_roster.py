@@ -21,7 +21,7 @@ from app.db import get_session
 from app.derive import last_assignment_at_for_agent
 from app.models import RosterAgent, RosterShift, Ticket
 from app.roster import classify_tags, compute_shift_status, parse_roster_csv, parse_roster_xlsx
-from app.schemas import RosterAgentOut, RosterOverdueTicket, RosterUploadResult, TicketDetailOut
+from app.schemas import RosterAgentOut, RosterOverdueTicket, RosterShiftUpdateRequest, RosterUploadResult, TicketDetailOut
 from app.sync.manager import SyncManager
 from app.sync.timeutil import to_reporting_datetime, utcnow
 
@@ -157,6 +157,50 @@ async def list_roster_agents(
         )
         for a in agents
     ]
+
+
+@router.put("/roster/agents/{email}/shift", response_model=RosterAgentOut)
+async def update_roster_agent_shift(
+    email: str,
+    body: RosterShiftUpdateRequest,
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_app_settings),
+):
+    """Manual override for one agent's today/tomorrow shift cell - the
+    uploaded sheet is only as fresh as the last upload, and a shift change
+    someone mentions in the meantime shouldn't have to wait for a
+    re-upload. Same upsert path as the CSV import (agent_email,
+    shift_date) unique constraint), so a later roster upload for the same
+    date simply overwrites this the same way it always would."""
+    agent = await session.get(RosterAgent, email)
+    if agent is None:
+        raise HTTPException(404, "Agent not found in roster")
+
+    code = body.shift_code.strip()
+    if not code:
+        raise HTTPException(400, "Shift code can't be empty")
+
+    now_local = to_reporting_datetime(utcnow(), settings.reporting_timezone)
+    today = now_local.date()
+    tomorrow = today + timedelta(days=1)
+    target_date = today if body.which == "today" else tomorrow
+
+    stmt = sqlite_insert(RosterShift).values(agent_email=email, shift_date=target_date, shift_code=code)
+    stmt = stmt.on_conflict_do_update(index_elements=["agent_email", "shift_date"], set_={"shift_code": stmt.excluded.shift_code})
+    await session.execute(stmt)
+    await session.commit()
+
+    shift_rows = (
+        await session.execute(select(RosterShift).where(RosterShift.agent_email == email, RosterShift.shift_date.in_((today, tomorrow))))
+    ).scalars().all()
+    shift_map = {r.shift_date: r.shift_code for r in shift_rows}
+    return RosterAgentOut(
+        email=agent.email,
+        name=agent.name,
+        role=agent.role,
+        today_shift_code=shift_map.get(today),
+        tomorrow_shift_code=shift_map.get(tomorrow),
+    )
 
 
 @router.get("/roster/overdue-tickets", response_model=list[RosterOverdueTicket])

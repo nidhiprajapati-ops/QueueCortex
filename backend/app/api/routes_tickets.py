@@ -18,7 +18,7 @@ from app.derive import (
     compute_ticket_flags,
     compute_today_snapshot,
 )
-from app.models import AssignmentEvent, CsatEvent, LevelTransition, LocalNote, StatusTransition, Ticket, TicketDuplicate, TicketTag
+from app.models import AssignmentEvent, CsatEvent, Customer, LevelTransition, LocalNote, StatusTransition, Ticket, TicketDuplicate, TicketTag
 from app.schemas import (
     AddTicketRequest,
     LocalNoteCreate,
@@ -168,7 +168,10 @@ async def list_tickets(
     if search:
         like = f"%{search}%"
         num_match = Ticket.num == int(search) if search.isdigit() else False
-        stmt = stmt.where(or_(Ticket.subject.ilike(like), num_match))
+        full_name = func.coalesce(Customer.first_name, "").concat(" ").concat(func.coalesce(Customer.last_name, ""))
+        stmt = stmt.outerjoin(Customer, Ticket.customer_id == Customer.id).where(
+            or_(Customer.first_name.ilike(like), Customer.last_name.ilike(like), Customer.email.ilike(like), full_name.ilike(like), num_match)
+        )
 
     if closed_today:
         closed_ids = await compute_actually_closed_today_ids(session, settings)
